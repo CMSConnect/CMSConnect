@@ -1,4 +1,2 @@
 # CMSConnect
-CMS Connect Virtual Pool
-
-Source code for specific-bits related to CMS-Connect, including dashboard reporting, examples, etc.
+Dashboard modules to report CMS-Connect jobs to CMS Dashboard: http://dashb-cms-job.cern.ch
