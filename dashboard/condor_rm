@@ -9,7 +9,7 @@ import re
 import time
 
 CondorSubmit = '/usr/bin/.condor_submit'
-CondorRm = '/usr/bin/condor_rm'
+CondorRm = '/usr/bin/.condor_rm'
 
 def print_condor(out, long_mode):
     if long_mode:
