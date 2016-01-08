@@ -7,6 +7,12 @@ import daemon
 import htcondor
 import re
 import time
+import logging
+import os
+logging.basicConfig(format='%(asctime)s [%(levelname)s]:%(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+
+logger = logging.getLogger('condor_rm')
+logger.setLevel(logging.WARNING)
 
 CondorSubmit = '/usr/bin/.condor_submit'
 CondorRm = '/usr/bin/.condor_rm'
@@ -44,6 +50,7 @@ def report_jobs(out, state):
     """Get list of jobs sucessfully deleted and report them
     to dashboard
     """
+
     schedd = htcondor.Schedd()
     cluster_re = re.compile(r'job_(\d+)_(\d+) = 1')
     for iter in cluster_re.finditer(out):
@@ -65,7 +72,7 @@ def report_jobs(out, state):
             monitor = report.Monitor(Dashboard_taskid)
             monitor.update_job(str(Dashboard_Id), str(state))
         except:
-            print "Could not report: {0}.{1}".format(clusterid, procid)
+            logger.debug("Dashboard parameters not found for: {0}.{1}. Job will be killed but not reported to Dashboard.".format(clusterid, procid))
             pass
 
     return
@@ -76,9 +83,14 @@ if __name__ == "__main__":
 
     long_mode = False
     for arg in sys.argv[1:]:
+        if arg=='--debug':
+            logger.setLevel(logging.DEBUG)
+            continue
+
         if arg=='-long':
             long_mode = True
         list_nargs += [str(arg)]
+
 
     if not long_mode:
         list_nargs += ['-long']
