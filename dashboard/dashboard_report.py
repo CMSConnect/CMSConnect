@@ -19,7 +19,7 @@ class CMSReporter(object):
     def __init__(self, submitfile):
         self._submitfile = submitfile
         self._cancel_report = False
-        self._wrapper = '/usr/bin/connect_wrapper.py'
+        self._wrapper = '/usr/local/wrapper/connect_wrapper.py'
 
         # Create and register monitor
         self._taskid = self._get_taskid(str(submitfile))

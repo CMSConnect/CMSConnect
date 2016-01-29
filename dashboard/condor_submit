@@ -10,6 +10,7 @@ import grp
 import tempfile
 import subprocess
 import time
+import types
 import dashboard_report
 
 CondorSubmit = '/usr/bin/.condor_submit'
@@ -19,393 +20,395 @@ ProjectFiles = ('~/.osg_default_project',
 ConfigFile = '/etc/ciconnect/config.ini'
 
 SupplementalClassAds = [
-	#('UsedOCWrapper', 'TRUE'),
-	('ConnectWrapper', str(__version__)),
+    # ('UsedOCWrapper', 'TRUE'),
+    ('ConnectWrapper', str(__version__)),
 ]
 
 LockFile = "/tmp/condor-submit-lock." + str(os.getuid())
 
 Debug = False
 
+
 def groups(user):
-	'''Get all groups (for a given user)'''
-	groups = []
+    '''Get all groups (for a given user)'''
+    groups = []
 
-	fp = open('/etc/ciconnect/project_blacklist')
-	blacklist = [line.strip() for line in fp if not line.startswith('#')]
-	fp.close()
+    fp = open('/etc/ciconnect/project_blacklist')
+    blacklist = [line.strip() for line in fp if not line.startswith('#')]
+    fp.close()
 
-	for group in grp.getgrall():
-		name = group.gr_name.replace('@', '')
-		if name in blacklist:
-			continue
-		if user and user.pw_name in group.gr_mem:
-			groups.append(name)
-		elif user is None:
-			groups.append(name)
-	return groups
+    for group in grp.getgrall():
+        name = group.gr_name.replace('@', '')
+        if name in blacklist:
+            continue
+        if user and user.pw_name in group.gr_mem:
+            groups.append(name)
+        elif user is None:
+            groups.append(name)
+    return groups
 
 
 def getproject(sub):
-	project = None
-	if '+projectname' in sub:
-		project = sub['+projectname'][1]
+    project = None
+    if '+projectname' in sub:
+        project = sub['+projectname'][1]
 
-	for file in ProjectFiles:
-		file = os.path.expanduser(file)
-		if not project:
-			try:
-				fp = open(file, 'r')
-				project = fp.readline().strip()
-				fp.close()
-			except:
-				pass
+    for file in ProjectFiles:
+        file = os.path.expanduser(file)
+        if not project:
+            try:
+                fp = open(file, 'r')
+                project = fp.readline().strip()
+                fp.close()
+            except:
+                pass
 
-	return project
+    return project
 
 
 class submit(list):
-	def __init__(self, *args):
-		self.text = ''
-		list.__init__(self, *args)
+    def __init__(self, *args):
+        self.text = ''
+        list.__init__(self, *args)
 
-	def update(self):
-		'''Replace original text with reconstructed submit file'''
-		self.text = '\n'.join(list(self.lines()))
+    def update(self):
+        '''Replace original text with reconstructed submit file'''
+        self.text = '\n'.join(list(self.lines()))
 
-	def parse(self, file):
-		if file:
-			fp = open(file, 'r')
-		else:
-			fp = sys.stdin
+    def parse(self, file):
+        if file:
+            fp = open(file, 'r')
+        else:
+            fp = sys.stdin
 
-		carry = ''
-		for line in fp:
-			self.text += line
-			if line.lstrip().startswith('#'):
-				continue
+        carry = ''
+        for line in fp:
+            self.text += line
+            if line.lstrip().startswith('#'):
+                continue
 
-			line = line.rstrip()
-			if line.endswith('\\'):
-				carry += line[:-1]
-				continue
+            line = line.rstrip()
+            if line.endswith('\\'):
+                carry += line[:-1]
+                continue
 
-			line = line.lstrip()
-			if line == '':
-				self.append(('', None))
-				continue
+            line = line.lstrip()
+            if line == '':
+                self.append(('', None))
+                continue
 
-			if carry:
-				line = carry + line
-				carry = ''
+            if carry:
+                line = carry + line
+                carry = ''
 
-			if '=' in line:
-				k, v = line.split('=', 1)
-				self.append((k.strip(), v.strip()))
-			else:
-				self.append((line, None))
+            if '=' in line:
+                k, v = line.split('=', 1)
+                self.append((k.strip(), v.strip()))
+            else:
+                self.append((line, None))
 
-		if file:
-			fp.close()
+        if file:
+            fp.close()
 
-	def lines(self):
-		for k, v in self:
-			if v:
-				yield k + ' = ' + v
-			else:
-				yield k
+    def lines(self):
+        for k, v in self:
+            if v:
+                yield k + ' = ' + v
+            else:
+                yield k
 
-	def __getitem__(self, key):
-		if type(key) == type(0):
-			return list.__getitem__(self, key)
-		key = key.lower()
-		for k, v in self:
-			if key.lower() == k.lower():
-				return k, v.replace('"', '')
+    def __getitem__(self, key):
+        if type(key) == types.IntType:
+            return list.__getitem__(self, key)
+        key = key.lower()
+        for k, v in self:
+            if key.lower() == k.lower():
+                return k, v.replace('"', '')
 
-	def __setitem__(self, key, value):
-		key = key.lower()
-		for i in xrange(len(self)):
-			k, v = self[i]
-			if key.lower() == k.lower():
-				list.__setitem__(self, i, (k, value))
-				return
-		self.append((key, value))
+    def __setitem__(self, key, value):
+        key = key.lower()
+        for i in xrange(len(self)):
+            k, v = self[i]
+            if key.lower() == k.lower():
+                list.__setitem__(self, i, (k, value))
+                return
+        self.append((key, value))
 
-	def __contains__(self, key):
-		key = key.lower()
-		for k, v in self:
-			if key.lower() == k.lower():
-				return True
-		return False
+    def __contains__(self, key):
+        key = key.lower()
+        for k, v in self:
+            if key.lower() == k.lower():
+                return True
+        return False
+
 
 def setacctgroup(user, project):
-	#acctgroup = 'group_other.' + user.pw_name
-	acctgroup = 'group_opportunistic.' + user.pw_name
+    # acctgroup = 'group_other.' + user.pw_name
+    acctgroup = 'group_opportunistic.' + user.pw_name
 
-	# xsede logics:
-	#if grep -i "^$PROJECT:" /etc/osg/xsede-projects-low-priority >/dev/null 2>&1; then
-	#	#acctgroup="group_xsede.low.$me"
-	#	acctgroup="group_opportunistic.$me"
-	#elif grep -i "^$PROJECT:" /etc/osg/xsede-projects-high-priority >/dev/null 2>&1; then
-	#	acctgroup="group_xsede.high.$me"
-	#elif [ "x$XSEDE_PROJECT" = "xTG-TRA100004" ];then
-	#	# special rule for TG-TRA100004 - rynge 8/12/13
-	#	acctgroup="group_other.$me"
-	#fi
+    # xsede logics:
+    # if grep -i "^$PROJECT:" /etc/osg/xsede-projects-low-priority >/dev/null 2>&1; then
+    #	#acctgroup="group_xsede.low.$me"
+    #	acctgroup="group_opportunistic.$me"
+    # elif grep -i "^$PROJECT:" /etc/osg/xsede-projects-high-priority >/dev/null 2>&1; then
+    #	acctgroup="group_xsede.high.$me"
+    # elif [ "x$XSEDE_PROJECT" = "xTG-TRA100004" ];then
+    #	# special rule for TG-TRA100004 - rynge 8/12/13
+    #	acctgroup="group_other.$me"
+    # fi
 
-	if project == 'OSG-Staff':
-		acctgroup = 'group_xsede.high.' + user.pw_name
+    if project == 'OSG-Staff':
+        acctgroup = 'group_xsede.high.' + user.pw_name
 
-	# Accouting group OVERRIDE required by MWT2
-	acctgroup = 'group_opport.vo.uc3.' + user.pw_name
+    # Accouting group OVERRIDE required by MWT2
+    acctgroup = 'analysis.' + user.pw_name
 
-	return acctgroup
+    return acctgroup
 
 
 def get_submit_lock():
-	"""
-	Slows down submittors who submit jobs in parallel - this is to protect our schedd
-	"""
-	max_time = 360
-	end_time = time.time() + max_time
-	while time.time() < end_time and os.path.exists(LockFile):
-		time.sleep(5)
-	try:
-		open(LockFile, 'w+')
-	except:
-		pass
+    """
+    Slows down submittors who submit jobs in parallel - this is to protect our schedd
+    """
+    max_time = 360
+    end_time = time.time() + max_time
+    while time.time() < end_time and os.path.exists(LockFile):
+        time.sleep(5)
+    try:
+        open(LockFile, 'w+')
+    except:
+        pass
 
 
 def release_submit_lock():
-	"""
-	Clean up the submit lock
-	"""
-	try:
-		os.unlink(LockFile)
-	except:
-		pass
+    """
+    Clean up the submit lock
+    """
+    try:
+        os.unlink(LockFile)
+    except:
+        pass
 
 
 def main(args):
-	global Debug
+    global Debug
 
-	cfg = ConfigParser.RawConfigParser()
-	cfg.read(ConfigFile)
-	classads = list(SupplementalClassAds)
+    cfg = ConfigParser.RawConfigParser()
+    cfg.read(ConfigFile)
+    classads = list(SupplementalClassAds)
 
-	user = pwd.getpwuid(os.getuid())
-	group = grp.getgrgid(os.getgid())
-	mygroups = groups(user)
-	mygroups.sort()
+    user = pwd.getpwuid(os.getuid())
+    group = grp.getgrgid(os.getgid())
+    mygroups = groups(user)
+    mygroups.sort()
 
-	validoptions = (
-		# option, requires optarg?, skip submitfile?
-		('-help', False, True),
-		('-verbose', False, False),
-		('-interactive', False, False),
-		('-unused', False, False),
-		('-name', True, False),
-		('-remote', True, False),
-		('-append', True, False),
-		('-addr', True, False),
-		('-append', True, False),
-		('-disable', False, False),
-		('-spool', False, False),
-		('-password', True, False),
-		('-pool', True, False),
-		('-dump', True, False),
-		('-stm', True, False),
-	)
+    validoptions = (
+        # option, requires optarg?, skip submitfile?
+        ('-help', False, True),
+        ('-verbose', False, False),
+        ('-interactive', False, False),
+        ('-unused', False, False),
+        ('-name', True, False),
+        ('-remote', True, False),
+        ('-append', True, False),
+        ('-addr', True, False),
+        ('-append', True, False),
+        ('-disable', False, False),
+        ('-spool', False, False),
+        ('-password', True, False),
+        ('-pool', True, False),
+        ('-dump', True, False),
+        ('-stm', True, False),
+    )
 
-	submitfile = None
-	options = []
-	skip = False
-	readcmds = True
-        if os.environ.get('CONDOR_CMS_DASHBOARD')=='False':
-                Dashboard = False
-        else:
-                Dashboard = True
+    submitfile = None
+    options = []
+    skip = False
+    readcmds = True
+    if os.environ.get('CONDOR_CMS_DASHBOARD')=='False':
+        Dashboard = False
+    else:
+        Dashboard = True
+    for arg in args:
+        matched = False
+        if skip:
+            skip = False
+            options.append(arg)
+            continue
+        for vopt, hasargs, skipsub in validoptions:
+            if vopt.startswith(arg):
+                options.append(arg)
+                if hasargs:
+                    skip = True
+                if skipsub:
+                    readcmds = False
+                matched = True
+        if arg == '--debug':
+            Debug = True  # wrapper option, do not append to options[]
+            matched = True
+        elif arg == '--disable-dashboard':
+            Dashboard = False   # wrapper option, do not append to options[]
+            matched = True
+        if not matched:
+            submitfile = arg
 
-	for arg in args:
-		matched = False
-		if skip:
-			skip = False
-			options.append(arg)
-			continue
-		for vopt, hasargs, skipsub in validoptions:
-			if vopt.startswith(arg):
-				options.append(arg)
-				if hasargs:
-					skip = True
-				if skipsub:
-					readcmds = False
-				matched = True
-		if arg == '--debug':
-			Debug = True	# wrapper option, do not append to options[]
-			matched = True
-                elif arg == '--disable-dashboard':
-                        Dashboard = False   # wrapper option, do not append to options[]
-                        matched = True
-		if not matched:
-			submitfile = arg
+    try:
+        sub = submit()
 
-	try:
-		sub = submit()
+        if readcmds:
+            # Print usual Condor pre-reponse
+            sys.stdout.write('Submitting job(s)')
+            sys.stdout.flush()
+            sub.parse(submitfile)
 
-		if readcmds:
-			# Print usual Condor pre-reponse
-			sys.stdout.write('Submitting job(s)')
-			sys.stdout.flush()
-			sub.parse(submitfile)
+    except KeyboardInterrupt:
+        print '\nbreak (no jobs submitted)'
+        return 10
 
-	except KeyboardInterrupt:
-		print '\nbreak (no jobs submitted)'
-		return 10
+    needproject = True
 
-	needproject = True
+    if 'universe' in sub:
+        if sub['universe'][1] == 'local':
+            needproject = False
+        if sub['universe'][1] == 'scheduler':
+            needproject = False
+    else:
+        sub['universe'] = 'vanilla'
+        sub.update()
 
-	if 'universe' in sub:
-		if sub['universe'][1] == 'local':
-			needproject = False
-		if sub['universe'][1] == 'scheduler':
-			needproject = False
-	else:
-		sub['universe'] = 'vanilla'
-		sub.update()
+    def showprojects():
+        print 'The following projects are available to you:'
+        for group in mygroups:
+            print "	 " + group
 
-	def showprojects():
-		print 'The following projects are available to you:'
-		for group in mygroups:
-			print "	 " + group
+    project = getproject(sub)
+    if needproject and not project:
+        print
+        print 'No ProjectName ClassAd defined!'
+        print 'Please run "connect project" to set your default project.'
+        print 'Alternatively, define your %s project ID in your submit file.' % cfg.get('connect', 'name')
+        print '	 Example:  +ProjectName = "MyProjectName"'
+        print
+        showprojects()
+        return 1
 
-	project = getproject(sub)
-	if needproject and not project:
-		print
-		print 'No ProjectName ClassAd defined!'
-		print 'Please run "connect project" to set your default project.'
-		print 'Alternatively, define your %s project ID in your submit file.' % cfg.get('connect', 'name')
-		print '	 Example:  +ProjectName = "MyProjectName"'
-		print
-		showprojects()
-		return 1
+    if project:
+        if cfg.has_section('project-replacements'):
+            for left, right in cfg.items('project-replacements'):
+                off = project.lower().find(left.lower())
+                if off > -1:
+                    project = project[:off] + right + project[off + len(left):]
 
-	if project:
-		if cfg.has_section('project-replacements'):
-			for left, right in cfg.items('project-replacements'):
-				off = project.lower().find(left.lower())
-				if off > -1:
-					project = project[:off] + right + project[off+len(left):]
+        if project not in mygroups:
+            print
+            print 'Sorry, the project you specified (%s) is not valid' % project
+            print 'or you are not in its list of allowed users.'
+            print
+            showprojects()
+            return 1
+    # Tries to check for valid proxies, otherwise renew. Injects the x509userproxy classad for the user.
+    try:
+        if cfg.has_section('submit'):
+            if cfg.getboolean('submit', 'requirex509'):
+                if (os.environ.get('X509_USER_PROXY') and os.path.isfile(os.environ.get('X509_USER_PROXY'))) or \
+                        (os.path.isfile('/tmp/x509up_u' + str(os.getuid()))):
+                    proxytime = \
+                    subprocess.Popen(['voms-proxy-info', '-timeleft'], stdout=subprocess.PIPE).communicate()[0].replace(
+                        '\n', '')
+                    if int(proxytime) == 0:
+                        print
+                        print "Your voms proxy has expired. Please renew!"
+                        print
+                        subprocess.check_call(["voms-proxy-init", "-voms", "cms", "-valid", "192:00"])
+                    elif int(proxytime) <= 604800:
+                        print
+                        print "Your voms proxy expires in " + proxytime + "s. Please renew!"
+                        print
+                        subprocess.check_call(["voms-proxy-init", "-voms", "cms", "-valid", "192:00"])
+                else:
+                    print
+                    print "Couldn't find a proxy. Please setup voms proxy!"
+                    print
+                    subprocess.check_call(["voms-proxy-init", "-voms", "cms", "-valid", "192:00"])
+                # Also need to check that the submit file has a proxy
+                if 'x509userproxy' not in sub:
+                    if os.environ.get('X509_USER_PROXY'):
+                        classads.append(('x509userproxy', os.environ.get('X509_USER_PROXY')))
+                    else:
+                        classads.append(('x509userproxy', '/tmp/x509up_u' + str(os.getuid())))
+    except ConfigParser.Error:
+        pass
+    except subprocess.CalledProcessError:
+        print
+        print "Failed to create proxy."
+        print
+        return 1
 
-		if project not in mygroups:
-			print
-			print 'Sorry, the project you specified (%s) is not valid' % project
-			print 'or you are not in its list of allowed users.'
-			print
-			showprojects()
-			return 1
-	# Tries to check for valid proxies, otherwise renew. Injects the x509userproxy classad for the user.
-        try:
-		if cfg.has_section('submit'):
-			if cfg.getboolean('submit','requirex509'):
-                                if ( os.environ.get('X509_USER_PROXY') and os.path.isfile(os.environ.get('X509_USER_PROXY')) ) or \
-				( os.path.isfile('/tmp/x509up_u' + str(os.getuid())) ):
-						proxytime = subprocess.Popen(['voms-proxy-info', '-timeleft'], stdout=subprocess.PIPE).communicate()[0].replace('\n','')
-						if int(proxytime) == 0:
-							print
-							print "Your voms proxy has expired. Please renew!"
-							print
-							subprocess.check_call(["voms-proxy-init","-voms","cms","-valid","192:00"])
-						elif int(proxytime) <= 604800:
-							print
-							print "Your voms proxy expires in " + proxytime + "s. Please renew!"
-							print
-							subprocess.check_call(["voms-proxy-init","-voms","cms","-valid","192:00"])
-				else:
-					print
-					print "Couldn't find a proxy. Please setup voms proxy!"
-					print
-					subprocess.check_call(["voms-proxy-init","-voms","cms","-valid","192:00"])
-				# Also need to check that the submit file has a proxy
-				if 'x509userproxy' not in sub:
-					if os.environ.get('X509_USER_PROXY'):
-						classads.append(('x509userproxy',os.environ.get('X509_USER_PROXY')))
-					else:
-						classads.append(('x509userproxy','/tmp/x509up_u' + str(os.getuid())))
-	except ConfigParser.Error:
-		pass
-	except subprocess.CalledProcessError:
-		print
-		print "Failed to create proxy."
-		print
-		return 1
+    acctgroup = setacctgroup(user, project)
 
-	acctgroup = setacctgroup(user, project)
+    nargs = [CondorSubmit, '-disable']
+    classads.append(('ProjectName', project))
+    classads.append(('SubmitFile', str(submitfile)))
 
-	nargs = [CondorSubmit, '-disable']
-	classads.append(('ProjectName', project))
-	classads.append(('SubmitFile', str(submitfile)))
+    if acctgroup:
+        classads.append(('AccountingGroup', acctgroup))
 
-	if acctgroup:
-		classads.append(('AccountingGroup', acctgroup))
+    # If CMS Dashboard is enabled:
+    # - Register task to monitor.
+    # - Add dashboard parameters to Classads and SHELL environment.
+    # - Preppend dashboard wrapper before executable for the worker node.
+    if Dashboard:
+        cms_reporter = dashboard_report.CMSReporter(submitfile)
+        sub = cms_reporter.cms_dashboard_report(sub, classads, nargs)
 
-        # If CMS Dashboard is enabled:
-        # - Register task to monitor.
-        # - Add dashboard parameters to Classads and SHELL environment.
-        # - Preppend dashboard wrapper before executable for the worker node.
-        if Dashboard:
-                cms_reporter = dashboard_report.CMSReporter(submitfile)
-                sub = cms_reporter.cms_dashboard_report(sub, classads, nargs)
+    # We could instead do:
+    # for ad, value in classads:
+    # 	sub['+' + ad] = value
+    # sub.update()
+    # But this would rely more heavily on the submit file parse/reconstruct
+    # logic.  It probably is fine, but so long as -a works for us let's just
+    # use that.
+    for ad, value in classads:
+        nargs += ['-a', '+%s = "%s"' % (ad, value)]
+    nargs += options
 
-	# We could instead do:
-	# for ad, value in classads:
-	# 	sub['+' + ad] = value
-	# sub.update()
-	# But this would rely more heavily on the submit file parse/reconstruct
-	# logic.  It probably is fine, but so long as -a works for us let's just
-	# use that.
-	for ad, value in classads:
-		nargs += ['-a', '+%s = "%s"' % (ad, value)]
-	nargs += options
+    if Debug:
+        print nargs
+        print sub.text
+        return 0
 
-	if Debug:
-		print nargs
-		print sub.text
-		return 0
+    # slow down aggresive submitters
+    get_submit_lock()
 
-	# slow down aggresive submitters
-	get_submit_lock()
-
-	p = subprocess.Popen(nargs, executable=CondorSubmit,
-	                     stdin=subprocess.PIPE,
-	                     stdout=subprocess.PIPE,
-	                     stderr=subprocess.STDOUT)
-	try:
-		p.stdin.write(sub.text)
-		p.stdin.close()
-	except IOError, e:
-		pass
-
-        out = ''
-	while True:
-		data = p.stdout.read()
-		data = data.replace('Submitting job(s)', '')
-		data = data.replace(os.path.basename(CondorSubmit), os.path.basename(sys.argv[0]))
-		if not data:
-			break
-		sys.stdout.write(data)
-		sys.stdout.flush()
-                out += '{0}\n'.format(data)
-	rc = p.wait()
-        if Dashboard:
-            # Report submitted jobs to CMS dashboard
-            cms_reporter.report_jobs(out)
-	release_submit_lock()
-	if rc < 0:
-		print 'condor_submit received signal', -rc
-		return 1
-	return rc
+    p = subprocess.Popen(nargs, executable=CondorSubmit,
+                         stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT)
+    try:
+        p.stdin.write(sub.text)
+        p.stdin.close()
+    except IOError, e:
+        pass
+    out = ''
+    while True:
+        data = p.stdout.read()
+        data = data.replace('Submitting job(s)', '')
+        data = data.replace(os.path.basename(CondorSubmit), os.path.basename(sys.argv[0]))
+        if not data:
+            break
+        sys.stdout.write(data)
+        sys.stdout.flush()
+        out += '{0}\n'.format(data)
+    rc = p.wait()
+    release_submit_lock()
+    if Dashboard:
+        # Report submitted jobs to CMS dashboard
+        cms_reporter.report_jobs(out)
+    if rc < 0:
+        print 'condor_submit received signal', -rc
+        return 1
+    return rc
 
 
 if __name__ == '__main__':
-	sys.exit(main(sys.argv[1:]))
+    sys.exit(main(sys.argv[1:]))
