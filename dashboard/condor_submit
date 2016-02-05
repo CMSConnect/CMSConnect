@@ -17,7 +17,8 @@ CondorSubmit = '/usr/bin/.condor_submit'
 ProjectFiles = ('~/.osg_default_project',
                 '~/.default_project',
                 '~/.ciconnect/defaultproject')
-ConfigFile = '/etc/ciconnect/config.ini'
+ConfigFile = '/home/khurtado/etc/config.ini'
+#ConfigFile = '/etc/ciconnect/config.ini'
 
 SupplementalClassAds = [
     # ('UsedOCWrapper', 'TRUE'),
@@ -343,6 +344,30 @@ def main(args):
         print "Failed to create proxy."
         print
         return 1
+
+    # Tries to check for DESIRED_Sites in submit file, otherwise create and set
+    # a default to T2+T3 US Sites. If $CONDOR_DEFAULT_DESIRED_SITES is set, use
+    # that value instead.
+    try:
+        if cfg.has_section('submit'):
+            if cfg.getboolean('submit', 'requireDefaultSites') and cfg.has_option('submit','DefaultSites'):
+                if '+DESIRED_Sites' not in sub:
+                    # Note: '+' is only for jdl files, new classads attributes
+                    # are appended without that prefix.
+                    if os.environ.get('CONDOR_DEFAULT_DESIRED_SITES'):
+                        classads.append(('DESIRED_Sites', os.environ.get('CONDOR_DEFAULT_DESIRED_SITES')))
+                    else:
+                        classads.append(('DESIRED_Sites', cfg.get('submit', 'DefaultSites')))
+    except ConfigParser.Error:
+        # If we failed, but DESIRED_sites was already in the submit file anyway,
+        # just pass. Otherwise, print failure.
+        if '+DESIRED_Sites' in sub:
+            pass
+        else:
+            print
+            print "Failed to set DESIRED_Sites"
+            print
+            return 1
 
     acctgroup = setacctgroup(user, project)
 
