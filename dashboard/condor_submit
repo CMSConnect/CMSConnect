@@ -17,8 +17,7 @@ CondorSubmit = '/usr/bin/.condor_submit'
 ProjectFiles = ('~/.osg_default_project',
                 '~/.default_project',
                 '~/.ciconnect/defaultproject')
-ConfigFile = '/home/khurtado/etc/config.ini'
-#ConfigFile = '/etc/ciconnect/config.ini'
+ConfigFile = '/etc/ciconnect/config.ini'
 
 SupplementalClassAds = [
     # ('UsedOCWrapper', 'TRUE'),
