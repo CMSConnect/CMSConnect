@@ -330,12 +330,30 @@ def main(args):
                     print "Couldn't find a proxy. Please setup voms proxy!"
                     print
                     subprocess.check_call(["voms-proxy-init", "-voms", "cms", "-valid", "192:00"])
+                proxysubject = \
+                subprocess.Popen(['voms-proxy-info', '-identity'], stdout=subprocess.PIPE).communicate()[0].replace(
+                    '\n', '')
+                vo = \
+                subprocess.Popen(['voms-proxy-info', '-vo'], stdout=subprocess.PIPE).communicate()[0].replace(
+                    '\n', '')
+                fqan = \
+                subprocess.Popen(['voms-proxy-info', '-fqan'], stdout=subprocess.PIPE).communicate()[0].replace(
+                        '\n', ',')[:-1]
+                first_fqan = fqan.split(',')[0]
+                fqan = '{0},{1}'.format(proxysubject, fqan)
+
                 # Also need to check that the submit file has a proxy
                 if 'x509userproxy' not in sub:
                     if os.environ.get('X509_USER_PROXY'):
                         classads.append(('x509userproxy', os.environ.get('X509_USER_PROXY')))
                     else:
                         classads.append(('x509userproxy', '/tmp/x509up_u' + str(os.getuid())))
+                    # Need to add the proxy identity,fqan,vo too.
+                    classads.append(('x509userproxysubject', str(proxysubject)))
+                    classads.append(('x509UserProxyFQAN', str(fqan)))
+                    classads.append(('x509UserProxyFirstFQAN', str(first_fqan)))
+                    classads.append(('x509UserProxyVOName', str(vo)))
+
     except ConfigParser.Error:
         pass
     except subprocess.CalledProcessError:
@@ -347,9 +365,10 @@ def main(args):
     # Tries to check for DESIRED_Sites in submit file, otherwise create and set
     # a default to T2+T3 US Sites. If $CONDOR_DEFAULT_DESIRED_SITES is set, use
     # that value instead.
+    # Also, add a default maximum wall time
     try:
         if cfg.has_section('submit'):
-            if cfg.getboolean('submit', 'requireDefaultSites') and cfg.has_option('submit','DefaultSites'):
+            if cfg.getboolean('submit', 'requireDefaultSites') and cfg.has_option('submit', 'DefaultSites'):
                 if '+DESIRED_Sites' not in sub:
                     # Note: '+' is only for jdl files, new classads attributes
                     # are appended without that prefix.
@@ -357,6 +376,9 @@ def main(args):
                         classads.append(('DESIRED_Sites', os.environ.get('CONDOR_DEFAULT_DESIRED_SITES')))
                     else:
                         classads.append(('DESIRED_Sites', cfg.get('submit', 'DefaultSites')))
+            if cfg.getboolean('submit','requireMaxWallTime') and cfg.has_option('submit', 'MaxWallTimeMins'):
+                if '+MaxWallTimeMins' not in sub:
+                    classads.append(('MaxWallTimeMins', int(cfg.get('submit', 'MaxWallTimeMins'))))
     except ConfigParser.Error:
         # If we failed, but DESIRED_sites was already in the submit file anyway,
         # just pass. Otherwise, print failure.
@@ -364,7 +386,7 @@ def main(args):
             pass
         else:
             print
-            print "Failed to set DESIRED_Sites"
+            print "Failed to set DESIRED_Sites or MaxWalltime"
             print
             return 1
 
@@ -393,7 +415,10 @@ def main(args):
     # logic.  It probably is fine, but so long as -a works for us let's just
     # use that.
     for ad, value in classads:
-        nargs += ['-a', '+%s = "%s"' % (ad, value)]
+        if isinstance(value,(int,long)):
+            nargs += ['-a', '+%s = %s' % (ad, value)]
+        else:
+            nargs += ['-a', '+%s = "%s"' % (ad, value)]
     nargs += options
 
     if Debug:
