@@ -1,5 +1,21 @@
-#! /bin/env python
+#! /bin/bash
 
+if "true" : '''\'
+then
+
+if [ ! -d /cvmfs/cms.cern.ch/crab/CRAB_2_11_1_patch1/python ]; then
+    env PATH="${PATH}:${PWD}" $@
+elif [ -n "$SRT_LD_LIBRARY_PATH_SCRAMRT" ]; then
+    env LD_LIBRARY_PATH=${LD_LIBRARY_PATH%%:}:$SRT_LD_LIBRARY_PATH_SCRAMRT python "$0" "$@"
+else
+    env python "$0" "$@"
+fi
+exitcode=$?
+exit $exitcode
+fi
+'''
+
+#! /bin/env python
 from datetime import datetime
 import os
 import subprocess
@@ -8,7 +24,14 @@ import socket
 import logging
 sys.path.insert(0, '/cvmfs/cms.cern.ch/crab/CRAB_2_11_1_patch1/python/')
 
-from DashboardAPI import apmonSend, apmonFree
+# from DashboardAPI import apmonSend, apmonFree
+try:
+    from DashboardAPI import apmonSend, apmonFree
+except:
+    u, v, t = sys.exc_info()
+    sys.stderr.write('Error: {0}\n'.format(v))
+    sys.exit(119)
+
 #import DashboardAPI
 #DashboardAPI.apmonLoggingLevel = "DEBUG"
 
@@ -57,11 +80,11 @@ if not executable:
     executable = "Unknown"
 
 # todo: Handle case when taskid, monitorid, syncid are not present
-taskid = os.environ.get('Dashboard_taskid')
-monitorid = os.environ.get('Dashboard_monitorid')
-syncid = os.environ.get('Dashboard_syncid')
+taskid = os.environ.get('Dashboard_taskid','')
+monitorid = os.environ.get('Dashboard_monitorid','')
+syncid = os.environ.get('Dashboard_syncid','')
 #Replace MetaId by Dashboard_id
-_jobid = str(os.environ.get('Dashboard_Id'))
+_jobid = str(os.environ.get('Dashboard_Id','MetaID'))
 monitorid = monitorid.replace('MetaID', _jobid)
 syncid = syncid.replace('MetaID', _jobid)
 
@@ -84,6 +107,13 @@ apmonFree()
 #Add PWD to PATH environment
 myenv = os.environ
 myenv['PATH'] += ':{0}'.format(os.environ.get('PWD'))
+
+print 'current cwd: {0}'.format(os.getcwd())
+print 'Directory list'
+os.listdir('./')
+
+print 'Environment:'
+print myenv
 
 t0 = os.times()
 p = subprocess.Popen(executable, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell=True, env=myenv)
@@ -173,3 +203,5 @@ parameters = {
             }
 apmonSend(taskid, monitorid, parameters)
 apmonFree()
+
+sys.exit(p.returncode)

@@ -12,6 +12,7 @@ import subprocess
 import time
 import types
 import dashboard_report
+import CMSGroupMapper
 
 CondorSubmit = '/usr/bin/.condor_submit'
 ProjectFiles = ('~/.osg_default_project',
@@ -212,7 +213,6 @@ def main(args):
         ('-remote', True, False),
         ('-append', True, False),
         ('-addr', True, False),
-        ('-append', True, False),
         ('-disable', False, False),
         ('-spool', False, False),
         ('-password', True, False),
@@ -243,6 +243,7 @@ def main(args):
                 if skipsub:
                     readcmds = False
                 matched = True
+                break
         if arg == '--debug':
             Debug = True  # wrapper option, do not append to options[]
             matched = True
@@ -320,7 +321,7 @@ def main(args):
                         print "Your voms proxy has expired. Please renew!"
                         print
                         subprocess.check_call(["voms-proxy-init", "-voms", "cms", "-valid", "192:00"])
-                    elif int(proxytime) <= 604800:
+                    elif int(proxytime) <= 86400:
                         print
                         print "Your voms proxy expires in " + proxytime + "s. Please renew!"
                         print
@@ -336,9 +337,9 @@ def main(args):
                 vo = \
                 subprocess.Popen(['voms-proxy-info', '-vo'], stdout=subprocess.PIPE).communicate()[0].replace(
                     '\n', '')
-                fqan = \
-                subprocess.Popen(['voms-proxy-info', '-fqan'], stdout=subprocess.PIPE).communicate()[0].replace(
-                        '\n', ',')[:-1]
+                fqan = subprocess.Popen(['voms-proxy-info', '-fqan'], stdout=subprocess.PIPE).communicate()[0].strip()
+                cmsgroups = CMSGroupMapper.getCMSGroups(proxysubject, fqan.split('\n'))
+                fqan = fqan.replace('\n', ',')
                 first_fqan = fqan.split(',')[0]
                 fqan = '{0},{1}'.format(proxysubject, fqan)
 
@@ -353,6 +354,8 @@ def main(args):
                     classads.append(('x509UserProxyFQAN', str(fqan)))
                     classads.append(('x509UserProxyFirstFQAN', str(first_fqan)))
                     classads.append(('x509UserProxyVOName', str(vo)))
+                # Write CMSGroups for local pilot priority
+                classads.append(('CMSGroups', str(cmsgroups)))
 
     except ConfigParser.Error:
         pass

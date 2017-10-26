@@ -19,7 +19,8 @@ class CMSReporter(object):
     def __init__(self, submitfile):
         self._submitfile = submitfile
         self._cancel_report = False
-        self._wrapper = '/usr/local/wrapper/connect_wrapper.py'
+        #self._wrapper = '/usr/local/wrapper/connect_wrapper.py'
+        self._wrapper = '/usr/local/wrapper/connect_wrapper.sh'
 
         # Create and register monitor
         self._taskid = self._get_taskid(str(submitfile))
@@ -32,7 +33,12 @@ class CMSReporter(object):
         index = 0
         for item in sub:
             if key.lower() in item[0].lower():
-                item = (item[0], '{0}{1}{2}'.format(value, separator, item[1]))
+                # Check if value starts with double or single quote,
+                # and insert preppended value inside quotes if so.
+                if item[1].startswith('"') or item[1].startswith("'"):
+                    item = (item[0], '{0}{1}{2}{3}'.format(item[1][0], value, separator, item[1][1:]))
+                else:
+                    item = (item[0], '{0}{1}{2}'.format(value, separator, item[1]))
                 list.__setitem__(sub, index, item)
             index += 1
 
@@ -77,11 +83,13 @@ class CMSReporter(object):
                 exe_cmd = sublist['executable'][1]
                 sublist['executable'] = self._wrapper
                 # Update arguments
+                # Note: need only basename of executable for Arguments
+                # since the full path wont be found in the WN
                 if 'arguments' in sublist:
-                    self._preppend_to_item_values(sublist, 'arguments', exe_cmd)
+                    self._preppend_to_item_values(sublist, 'arguments', os.path.basename(exe_cmd))
                 else:
                     #sublist['arguments'] = exe_cmd
-                    sublist.insert(exe_index+1,('Arguments', exe_cmd))
+                    sublist.insert(exe_index+1,('Arguments', os.path.basename(exe_cmd)))
                 # Update transfer_input_files
                 if 'transfer_input_files' in sublist:
                     latest_transfer_input_files = sublist['transfer_input_files'][1]
@@ -127,10 +135,15 @@ class CMSReporter(object):
 
         for cluster, jobs in clusters:
             for procid in range(int(jobs)):
+                current_env = schedd.query('ClusterId=={0} && ProcId=={1}'.format(cluster, procid),['Environment'])[0]['Environment']
                 new_id = str(int(jobs_previous) + int(procid))
                 schedd.edit(['{0}.{1}'.format(cluster, procid)], 'Dashboard_Id', new_id)
-                schedd.edit(['{0}.{1}'.format(cluster, procid)], 'Environment',
-                        "\"{0} Dashboard_Id='{1}'\"".format(self.monitor.environment,new_id))
+                if current_env:
+                    schedd.edit(['{0}.{1}'.format(cluster, procid)], 'Environment',
+                            "\"{0} {1} Dashboard_Id='{2}'\"".format(current_env, self.monitor.environment,new_id))
+                else:
+                    schedd.edit(['{0}.{1}'.format(cluster, procid)], 'Environment',
+                            "\"{0} Dashboard_Id='{1}'\"".format(self.monitor.environment,new_id))
             jobs_previous+=int(jobs)
 
         # Report jobs
@@ -157,6 +170,11 @@ class CMSReporter(object):
                 -classads: Condor ClassAds to modify.
                 -nargs: Arguments parsed to condor from condor_submit wrapper.
         '''
+        # Do nothing for scheduler universe (dagman master)
+        if 'scheduler' in sub['universe'][1]:
+            self._cancel_report = True
+            return sub
+
         original_sub = sub
         sub = sub.__class__(self._modify_exe_args(sub))
         if sub:
@@ -169,7 +187,8 @@ class CMSReporter(object):
             return original_sub
 
         # Create and register monitor
-        self.monitor.set_executable(sub['executable'][1])
+        #self.monitor.set_executable(sub['executable'][1])
+        self.monitor.set_executable(original_sub['executable'][1])
         self.monitor.register_run()
         dashboard_monitorid, dashboard_syncid = self.monitor.generate_ids('MetaID')
         dashboard_parameters = [("Dashboard_taskid", self._taskid),
@@ -179,8 +198,10 @@ class CMSReporter(object):
         classads += dashboard_parameters
         # Add dashboard paramenters to the SHELL environment
         envpars =  ' '.join("{0}='{1}'".format(ad, value) for ad, value in dashboard_parameters)
-        # envpars += ' Dashboard_Id=$(Process)'
-        nargs += ['-a', '+environment="{0}"'.format(envpars)]
+        # envpars += ' Dashboard_Id=$(Process)' # Obsolete
+        # nargs: environment is added in report_jobs anyway. Doing it here
+        # this way would overwrite any existing environment (getenv=True, environment=...) in original submit file
+        # nargs += ['-a', '+environment="{0}"'.format(envpars)]
         self.monitor.environment = envpars
 
         return sub
