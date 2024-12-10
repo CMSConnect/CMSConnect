@@ -1,0 +1,55 @@
+#! /bin/bash
+
+read -d '' USAGE <<"EOF"
+=================================================================================
+Watch for proxy certificate expiration time and notify via email when it is less than 48 hours.
+=================================================================================
+
+Usage: proxy_watcher [-start|-remove]
+Where:
+\\t-start : Submit a condor cron job to watch for proxy certificate.
+\\t-remove : Remove condor cron job watcher.
+\\n
+EOF
+
+create_submit_job(){
+tmpdir="."
+cat<<-EOF
+universe = local
+on_exit_remove = false
+cron_minute = 0
+cron_hour = */4
+cron_day_of_Month = *
+cron_month = *
+cron_day_of_week = *
+executable = /usr/local/connect_utils/proxy_checker.sh
+#output = $tmpdir/cron.out
+#error = $tmpdir/cron.err
+#log = $tmpdir/cron.log
+getenv = True
++IsProxyWatcher = True
+queue 1
+
+EOF
+}
+
+submit_cronjob(){
+    create_submit_job | /usr/bin/condor_submit
+}
+
+remove_cronjob(){
+    condor_rm $USER -constraint 'IsProxyWatcher == true'
+}
+
+case "$1" in
+   "") 
+      echo -e "$USAGE"
+      ;;
+   -start)
+      submit_cronjob
+      ;;
+   -remove)
+      remove_cronjob
+      ;;
+esac
+

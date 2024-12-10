@@ -1,20 +1,21 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-__version__ = '2.0'
+__version__ = '3.0'
 
 import os
 import sys
-import ConfigParser
+#import ConfigParser
+import configparser as ConfigParser
 import pwd
 import grp
 import tempfile
 import subprocess
 import time
 import types
-import dashboard_report
+#import dashboard_report
 import CMSGroupMapper
 
-CondorSubmit = '/usr/bin/.condor_submit'
+CondorSubmit = '/usr/bin/condor_submit'
 ProjectFiles = ('~/.osg_default_project',
                 '~/.default_project',
                 '~/.ciconnect/defaultproject')
@@ -119,7 +120,7 @@ class submit(list):
                 yield k
 
     def __getitem__(self, key):
-        if type(key) == types.IntType:
+        if type(key) == int:
             return list.__getitem__(self, key)
         key = key.lower()
         for k, v in self:
@@ -128,7 +129,7 @@ class submit(list):
 
     def __setitem__(self, key, value):
         key = key.lower()
-        for i in xrange(len(self)):
+        for i in range(len(self)):
             k, v = self[i]
             if key.lower() == k.lower():
                 list.__setitem__(self, i, (k, value))
@@ -219,21 +220,32 @@ def main(args):
         ('-pool', True, False),
         ('-dump', True, False),
         ('-stm', True, False),
+        ('-queue', True, False),
     )
 
     submitfile = None
     options = []
     skip = False
     readcmds = True
-    if os.environ.get('CONDOR_CMS_DASHBOARD')=='False':
-        Dashboard = False
-    else:
+    queue = None
+    isQueue = None
+    if os.environ.get('CONDOR_CMS_DASHBOARD')=='True':
         Dashboard = True
+    else:
+        Dashboard = False
     for arg in args:
+        if arg == '-queue':
+            skip = True
+            isQueue = True
+            continue
         matched = False
         if skip:
             skip = False
-            options.append(arg)
+            if isQueue:
+                isQueue = False
+                queue = arg
+            else:
+                options.append(arg)
             continue
         for vopt, hasargs, skipsub in validoptions:
             if vopt.startswith(arg):
@@ -263,7 +275,7 @@ def main(args):
             sub.parse(submitfile)
 
     except KeyboardInterrupt:
-        print '\nbreak (no jobs submitted)'
+        print('\nbreak (no jobs submitted)')
         return 10
 
     needproject = True
@@ -278,18 +290,16 @@ def main(args):
         sub.update()
 
     def showprojects():
-        print 'The following projects are available to you:'
+        print('The following projects are available to you:')
         for group in mygroups:
-            print "	 " + group
+            print("	 " + group)
 
     project = getproject(sub)
     if needproject and not project:
-        print
-        print 'No ProjectName ClassAd defined!'
-        print 'Please run "connect project" to set your default project.'
-        print 'Alternatively, define your %s project ID in your submit file.' % cfg.get('connect', 'name')
-        print '	 Example:  +ProjectName = "MyProjectName"'
-        print
+        print('No ProjectName ClassAd defined!')
+        print('Please run "connect project" to set your default project.')
+        print('Alternatively, define your %s project ID in your submit file.' % cfg.get('connect', 'name'))
+        print('	 Example:  +ProjectName = "MyProjectName"')
         showprojects()
         return 1
 
@@ -302,8 +312,8 @@ def main(args):
 
         if project not in mygroups:
             print
-            print 'Sorry, the project you specified (%s) is not valid' % project
-            print 'or you are not in its list of allowed users.'
+            print('Sorry, the project you specified (%s) is not valid' % project)
+            print('or you are not in its list of allowed users.')
             print
             showprojects()
             return 1
@@ -314,30 +324,30 @@ def main(args):
                 if (os.environ.get('X509_USER_PROXY') and os.path.isfile(os.environ.get('X509_USER_PROXY'))) or \
                         (os.path.isfile('/tmp/x509up_u' + str(os.getuid()))):
                     proxytime = \
-                    subprocess.Popen(['voms-proxy-info', '-timeleft'], stdout=subprocess.PIPE).communicate()[0].replace(
+                    subprocess.Popen(['voms-proxy-info', '-timeleft'], stdout=subprocess.PIPE).communicate()[0].decode().replace(
                         '\n', '')
                     if int(proxytime) == 0:
-                        print
-                        print "Your voms proxy has expired. Please renew!"
-                        print
+                        print()
+                        print("Your voms proxy has expired. Please renew!")
+                        print()
                         subprocess.check_call(["voms-proxy-init", "-voms", "cms", "-valid", "192:00"])
-                    elif int(proxytime) <= 86400:
-                        print
-                        print "Your voms proxy expires in " + proxytime + "s. Please renew!"
-                        print
+                    elif int(proxytime) <= 28800:
+                        print()
+                        print("Your voms proxy expires in " + proxytime + "s. Please renew!")
+                        print()
                         subprocess.check_call(["voms-proxy-init", "-voms", "cms", "-valid", "192:00"])
                 else:
-                    print
-                    print "Couldn't find a proxy. Please setup voms proxy!"
-                    print
+                    print()
+                    print("Couldn't find a proxy. Please setup voms proxy!")
+                    print()
                     subprocess.check_call(["voms-proxy-init", "-voms", "cms", "-valid", "192:00"])
                 proxysubject = \
-                subprocess.Popen(['voms-proxy-info', '-identity'], stdout=subprocess.PIPE).communicate()[0].replace(
+                subprocess.Popen(['voms-proxy-info', '-identity'], stdout=subprocess.PIPE).communicate()[0].decode().replace(
                     '\n', '')
                 vo = \
-                subprocess.Popen(['voms-proxy-info', '-vo'], stdout=subprocess.PIPE).communicate()[0].replace(
+                subprocess.Popen(['voms-proxy-info', '-vo'], stdout=subprocess.PIPE).communicate()[0].decode().replace(
                     '\n', '')
-                fqan = subprocess.Popen(['voms-proxy-info', '-fqan'], stdout=subprocess.PIPE).communicate()[0].strip()
+                fqan = subprocess.Popen(['voms-proxy-info', '-fqan'], stdout=subprocess.PIPE).communicate()[0].decode().strip()
                 cmsgroups = CMSGroupMapper.getCMSGroups(proxysubject, fqan.split('\n'))
                 fqan = fqan.replace('\n', ',')
                 first_fqan = fqan.split(',')[0]
@@ -360,9 +370,9 @@ def main(args):
     except ConfigParser.Error:
         pass
     except subprocess.CalledProcessError:
-        print
-        print "Failed to create proxy."
-        print
+        print()
+        print("Failed to create proxy.")
+        print()
         return 1
 
     # Tries to check for DESIRED_Sites in submit file, otherwise create and set
@@ -388,10 +398,21 @@ def main(args):
         if '+DESIRED_Sites' in sub:
             pass
         else:
-            print
-            print "Failed to set DESIRED_Sites or MaxWalltime"
-            print
+            print()
+            print("Failed to set DESIRED_Sites or MaxWalltime")
+            print()
             return 1
+    
+    # Append gridpacks card name from environment when CONDOR_GRIDPACK_CARDNAME exists
+    try:
+        if cfg.has_section('gridpacks'):
+            if cfg.has_option('gridpacks', 'appendCardNames') and cfg.getboolean('gridpacks', 'appendCardNames'): 
+                if '+GridpackCard' not in sub:
+                    if os.environ.get('CONDOR_GRIDPACK_CARDNAME'):
+                        classads.append(('GridpackCard', os.environ.get('CONDOR_GRIDPACK_CARDNAME')))
+    except ConfigParser.Error:
+        # Not critical, so just pass for now.
+        pass
 
     acctgroup = setacctgroup(user, project)
 
@@ -406,9 +427,9 @@ def main(args):
     # - Register task to monitor.
     # - Add dashboard parameters to Classads and SHELL environment.
     # - Preppend dashboard wrapper before executable for the worker node.
-    if Dashboard:
-        cms_reporter = dashboard_report.CMSReporter(submitfile)
-        sub = cms_reporter.cms_dashboard_report(sub, classads, nargs)
+    #if Dashboard:
+    #    cms_reporter = dashboard_report.CMSReporter(submitfile)
+    #    sub = cms_reporter.cms_dashboard_report(sub, classads, nargs)
 
     # We could instead do:
     # for ad, value in classads:
@@ -418,15 +439,15 @@ def main(args):
     # logic.  It probably is fine, but so long as -a works for us let's just
     # use that.
     for ad, value in classads:
-        if isinstance(value,(int,long)):
+        if isinstance(value,int):
             nargs += ['-a', '+%s = %s' % (ad, value)]
         else:
             nargs += ['-a', '+%s = "%s"' % (ad, value)]
     nargs += options
 
     if Debug:
-        print nargs
-        print sub.text
+        print(nargs)
+        print(sub.text)
         return 0
 
     # slow down aggresive submitters
@@ -437,13 +458,15 @@ def main(args):
                          stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT)
     try:
-        p.stdin.write(sub.text)
+        p.stdin.write(str.encode(sub.text))
+        if queue:
+            p.stdin.write(b"Queue {0}".format(queue))
         p.stdin.close()
-    except IOError, e:
+    except IOError:
         pass
     out = ''
     while True:
-        data = p.stdout.read()
+        data = p.stdout.read().decode()
         data = data.replace('Submitting job(s)', '')
         data = data.replace(os.path.basename(CondorSubmit), os.path.basename(sys.argv[0]))
         if not data:
@@ -457,7 +480,7 @@ def main(args):
         # Report submitted jobs to CMS dashboard
         cms_reporter.report_jobs(out)
     if rc < 0:
-        print 'condor_submit received signal', -rc
+        print('condor_submit received signal', -rc)
         return 1
     return rc
 

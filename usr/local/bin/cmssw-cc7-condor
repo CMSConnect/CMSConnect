@@ -1,0 +1,44 @@
+#! /bin/bash
+
+
+# Setup OSG Worder node environment
+CMD_TO_RUN="source /cvmfs/oasis.opensciencegrid.org/osg-software/osg-wn-client/3.4/current/el7-x86_64/setup.sh"
+
+# Setup CONDOR environment
+CONDOR_LOCATION="/usr/local/RedHat7/current"
+CMD_TO_RUN="${CMD_TO_RUN}; export PYTHONPATH=\$PYTHONPATH:${CONDOR_LOCATION}/lib/python3.6/site-packages"
+CMD_TO_RUN="${CMD_TO_RUN}; export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:${CONDOR_LOCATION}/lib/condor"
+CMD="/bin/bash"
+
+while [ "$#" != 0 ]; do
+  case "$1" in
+    -h|--help)
+      HELP_ARG=""
+      echo "Usage: $0 [-h|--help] [--command-to-run|-- <command to run>]"
+      exit 0
+      ;;
+    --command-to-run|--)
+      shift
+      CMD="$@"
+      break
+      ;;
+    *)
+      echo "Usage: $0 [-h|--help] [--command-to-run|-- <command to run>]"
+      exit 1
+      ;;
+  esac
+done
+
+CMD_TO_RUN="${CMD_TO_RUN}; ${CMD}"
+
+# Setup CONDOR PATH environment
+MYPATH="${CONDOR_LOCATION}/bin"
+MYPATH="${CONDOR_LOCATION}/sbin:$MYPATH"
+
+# Setup CMS Connect EL7 wrappers environment
+MYPATH="/usr/local/bin-cc7:$MYPATH"
+
+#export SINGULARITYENV_PREPEND_PATH="$MYPATH"
+
+#cmssw-cc7 -B /usr/local/RedHat7:/usr/local/RedHat7 -B /etc/condor-cc7:/etc/condor -B /etc/group:/etc/group -B /usr/local/bin:/usr/local/bin -B /etc/ciconnect:/etc/ciconnect -B /var/lib/condor/spool:/var/lib/condor/spool -B /stash:/stash -B /local-scratch:/local-scratch -B /usr/local/bin-el7:/usr/local/bin-el7 -B /usr/local/connect_utils:/usr/local/connect_utils --env CONDOR_LOCATION="$CONDOR_LOCATION" --env PREPEND_PATH="$MYPATH" -- bash -c "${CMD_TO_RUN}; bash"
+cmssw-cc7 -B /usr/local/RedHat7:/usr/local/RedHat7 -B /etc/condor-cc7:/etc/condor -B /etc/group:/etc/group -B /usr/local/bin-cc7:/usr/local/bin-cc7 -B /etc/ciconnect:/etc/ciconnect -B /var/lib/condor/spool:/var/lib/condor/spool -B /stash:/stash -B /local-scratch:/local-scratch -B /usr/local/connect_utils:/usr/local/connect_utils --env CONDOR_LOCATION="$CONDOR_LOCATION" --env PREPEND_PATH="$MYPATH" -- bash -c "${CMD_TO_RUN}; bash"

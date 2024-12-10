@@ -132,11 +132,11 @@ def dnUserName(dn, people):
     in case user just registered or fixed an issue with SiteDB
     """
     try:
-        userinfo = filter(lambda x: x['dn'] == dn, people)[0]
-        username = userinfo['username']
+        userinfo = filter(lambda x: x['dn'] == dn, people)
+        username = next(userinfo)['username']
     except (KeyError, IndexError):
-        userinfo = filter(lambda x: x['dn'] == dn, people)[0]
-        username = userinfo['username']
+        userinfo = filter(lambda x: x['dn'] == dn, people)
+        username = next(userinfo)['username']
     return username
 
 def _getCMSGroups(username, proxyfqan):
@@ -165,10 +165,10 @@ def getCMSGroups(dn, proxyfqan):
     return _getCMSGroups(username, proxyfqan)
 
 if __name__ == '__main__':
-    print map_user_to_groups("bbockelm")
-    print is_local_user("bbockelm", "T2_US_Nebraska")
-    print is_local_group("HIG", "T2_US_Nebraska")
-    print is_local_group("T2_US_Nebraska", "T2_US_Nebraska")
+    print(map_user_to_groups("bbockelm"))
+    print(is_local_user("bbockelm", "T2_US_Nebraska"))
+    print(is_local_group("HIG", "T2_US_Nebraska"))
+    print(is_local_group("T2_US_Nebraska", "T2_US_Nebraska"))
 
     #import classad
     #classad.register(map_user_to_groups)
